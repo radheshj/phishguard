@@ -1,0 +1,12 @@
+# Python & Virtual Environments
+backend/venv/
+backend/__pycache__/
+__pycache__/
+*.pyc
+
+# Environment Secrets
+backend/.env
+
+# OS Files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#070b14" />
+  <title>Call History &amp; Analytics — PhishGuard</title>
+  <meta name="description" content="Review every monitored call, track risk trends, and export your PhishGuard incident history." />
+  <link rel="icon" type="image/svg+xml" href="assets/icons/icon-shield.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+  <style>
+    :root {
+      --bg: #070b14; --bg2: #0b1120;
+      --surface: rgba(255,255,255,.035); --surface2: rgba(255,255,255,.06);
+      --border: rgba(148,163,184,.14); --border2: rgba(148,163,184,.26);
+      --text: #e8edf6; --muted: #8b97ad; --faint: #5b6679;
+      --accent: #6d8dff; --accent2: #38d6ff;
+      --safe: 34,197,94; --warn: 245,158,11; --crit: 239,68,68;
+      --ease: cubic-bezier(.22,1,.36,1);
+      --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --display: "Space Grotesk", "Inter", sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; font-family: var(--font); font-size: 15px; line-height: 1.55; color: var(--text); background: var(--bg); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+    h1, h2, h3, p { margin: 0; }
+    h1, h2, h3 { font-family: var(--display); letter-spacing: -.01em; }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    [hidden] { display: none !important; }
+    .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .ic { width: 1.1em; height: 1.1em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    .bg-glow { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(900px 500px at 10% -10%, rgba(109,141,255,.16), transparent 60%),
+        radial-gradient(700px 500px at 100% 10%, rgba(56,214,255,.09), transparent 60%),
+        radial-gradient(800px 600px at 50% 110%, rgba(109,141,255,.08), transparent 60%); }
+
+    /* ---------- Navigation ---------- */
+    .nav { position: sticky; top: 0; z-index: 50; background: rgba(7,11,20,.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border); }
+    .nav-inner { position: relative; max-width: 1200px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .nav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font-family: var(--display); font-weight: 700; font-size: 19px; }
+    .nav-brand span { background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .nav-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: linear-gradient(140deg, var(--accent), var(--accent2)); box-shadow: 0 8px 20px -8px rgba(109,141,255,.7); }
+    .nav-mark .ic { font-size: 18px; }
+    .nav-links { display: flex; gap: 4px; }
+    .nav-links a { padding: 8px 14px; border-radius: 10px; color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; border: 1px solid transparent; transition: color .2s, background .2s; }
+    .nav-links a:hover { color: var(--text); background: var(--surface2); }
+    .nav-links a.active { color: #fff; background: linear-gradient(135deg, rgba(91,123,255,.35), rgba(53,200,245,.18)); border-color: rgba(109,141,255,.35); }
+    .nav-toggle { display: none; width: 40px; height: 40px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); place-items: center; }
+    @media (max-width: 720px) {
+      .nav-toggle { display: grid; }
+      .nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; padding: 10px 16px 16px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+      .nav-links.open { display: flex; }
+    }
+
+    /* ---------- Layout ---------- */
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 36px 24px 64px; }
+    .eyebrow { display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--accent2); }
+    .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 18px; margin-bottom: 26px; animation: rise .7s var(--ease) both; }
+    .head h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; margin-top: 8px; }
+    .head p { color: var(--muted); margin-top: 8px; max-width: 560px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+    .btn { padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 14px; border: 1px solid var(--border2); background: var(--surface); transition: all .2s var(--ease); }
+    .btn:hover { border-color: var(--accent); background: rgba(109,141,255,.1); transform: translateY(-1px); }
+    .btn-primary { color: #fff; border-color: transparent; background: linear-gradient(135deg, #5b7bff, #35c8f5); box-shadow: 0 12px 26px -12px rgba(77,140,255,.8); }
+    .btn-danger:hover { border-color: rgba(var(--crit), .6); background: rgba(var(--crit), .12); color: rgb(var(--crit)); }
+
+    .card { background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02)); border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 20px 50px -20px rgba(0,0,0,.7); padding: 22px; animation: rise .7s var(--ease) both; }
+    .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .card-head h2 { font-size: 15px; font-weight: 600; }
+
+    .filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+    .select { padding: 9px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); outline: none; }
+    .select:focus { border-color: rgba(109,141,255,.6); }
+    .select option { background: var(--bg2); }
+
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 18px; }
+    .kpi { padding: 20px; border-radius: 18px; background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02)); border: 1px solid var(--border); animation: rise .6s var(--ease) both; }
+    .kpi:nth-child(2) { animation-delay: .06s; } .kpi:nth-child(3) { animation-delay: .12s; } .kpi:nth-child(4) { animation-delay: .18s; }
+    .kpi label { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+    .kpi b { display: block; font-family: var(--display); font-size: 32px; font-weight: 700; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+    .kpi small { color: var(--faint); font-size: 12.5px; }
+    .kpi.crit b { color: rgb(var(--crit)); }
+    .kpi.safe b { color: rgb(var(--safe)); }
+
+    .charts { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; margin-bottom: 18px; }
+    .chart-box { position: relative; height: 290px; }
+    .charts .card:nth-child(3) { grid-column: 1 / -1; }
+    .charts .card:nth-child(3) .chart-box { height: 240px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    td { padding: 13px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tbody tr { transition: background .2s; }
+    tbody tr:hover { background: var(--surface2); }
+    .table-wrap { overflow-x: auto; }
+    .verdict { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+    .verdict.safe { color: rgb(var(--safe)); background: rgba(var(--safe), .12); }
+    .verdict.suspicious { color: rgb(var(--warn)); background: rgba(var(--warn), .14); }
+    .verdict.critical { color: rgb(var(--crit)); background: rgba(var(--crit), .14); }
+    .del { padding: 6px 10px; border-radius: 9px; font-size: 12.5px; background: none; border: 1px solid transparent; color: var(--muted); }
+    .del:hover { color: rgb(var(--crit)); border-color: rgba(var(--crit), .4); }
+    .muted { color: var(--muted); }
+
+    .empty { text-align: center; padding: 60px 24px; animation: rise .6s var(--ease) both; }
+    .empty-ic { width: 72px; height: 72px; margin: 0 auto 18px; border-radius: 22px; display: grid; place-items: center; font-size: 30px; color: var(--accent); background: rgba(109,141,255,.1); border: 1px solid rgba(109,141,255,.25); }
+    .empty h2 { font-size: 22px; margin-bottom: 8px; }
+    .empty p { color: var(--muted); max-width: 460px; margin: 0 auto 20px; }
+
+    .toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 10px; z-index: 60; }
+    .toast { padding: 12px 16px; border-radius: 14px; background: rgba(15,22,38,.94); border: 1px solid var(--border2); box-shadow: 0 16px 40px -10px rgba(0,0,0,.7); font-size: 13.5px; animation: rise .4s var(--ease) both; }
+
+    .foot { text-align: center; color: var(--faint); font-size: 12px; padding: 24px; border-top: 1px solid var(--border); }
+
+    @media (max-width: 1000px) { .kpis { grid-template-columns: repeat(2, 1fr); } .charts { grid-template-columns: 1fr; } .charts .card:nth-child(3) { grid-column: auto; } }
+    @media (max-width: 560px) { .wrap { padding: 24px 16px 48px; } .card { padding: 16px; } .kpi b { font-size: 26px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <!-- Icon sprite -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="7" y2="7"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="17" y2="17"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+  </svg>
+
+  <!-- ============ NAVIGATION ============ -->
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="index.html">
+        <span class="nav-mark"><svg class="ic"><use href="#i-shield-check"/></svg></span>
+        <div>Phish<span>Guard</span></div>
+      </a>
+      <nav class="nav-links" id="navLinks" aria-label="Main">
+        <a href="index.html">Live Monitor</a>
+        <a href="library.html">Library</a>
+        <a href="history.html" class="active" aria-current="page">History</a>
+      </nav>
+      <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">
+        <svg class="ic"><use href="#i-menu"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <main class="wrap">
+    <section class="head">
+      <div>
+        <span class="eyebrow">Analytics · Incident log</span>
+        <h1>Call History &amp; Analytics</h1>
+        <p>Every monitored call, its peak risk and scam type, and how threats are trending over time. Data is stored in this browser only.</p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btnExport"><svg class="ic"><use href="#i-download"/></svg> Export CSV</button>
+        <button class="btn btn-danger" id="btnClear"><svg class="ic"><use href="#i-trash"/></svg> Clear history</button>
+      </div>
+    </section>
+
+    <!-- Empty state -->
+    <section id="emptyState" class="card empty" hidden>
+      <div class="empty-ic">◎</div>
+      <h2>No calls recorded yet</h2>
+      <p>Run a call on the Live Monitor and stop monitoring to save its incident report here. You can also load sample data to preview the analytics.</p>
+      <div class="actions" style="justify-content:center">
+        <a class="btn btn-primary" href="index.html">Go to Live Monitor</a>
+      </div>
+    </section>
+
+    <div id="dashboard" hidden>
+      <div class="filters">
+        <select id="range" class="select" aria-label="Time range">
+          <option value="7">Last 7 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="0">All time</option>
+        </select>
+        <select id="verdict" class="select" aria-label="Verdict filter">
+          <option value="all">All verdicts</option>
+          <option value="safe">Safe</option>
+          <option value="suspicious">Suspicious</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><label>Calls monitored</label><b id="kCalls">0</b><small>in selected range</small></div>
+        <div class="kpi crit"><label>Critical calls</label><b id="kCrit">0</b><small id="kCritRate">—</small></div>
+        <div class="kpi"><label>Average peak risk</label><b id="kAvg">0</b><small>out of 100</small></div>
+        <div class="kpi safe"><label>Time monitored</label><b id="kTime">0m</b><small>total listening time</small></div>
+      </div>
+
+      <div class="charts">
+        <div class="card">
+          <div class="card-head"><h2>Risk trend</h2><span class="muted" style="font-size:13px">Peak risk per call</span></div>
+          <div class="chart-box"><canvas id="chartTrend"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Scam types</h2><span class="muted" style="font-size:13px">Share of calls</span></div>
+          <div class="chart-box"><canvas id="chartTypes"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Calls per day</h2><span class="muted" style="font-size:13px">Stacked by verdict</span></div>
+          <div class="chart-box"><canvas id="chartDaily"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Recent calls</h2><span class="muted" id="tableCount" style="font-size:13px"></span></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Duration</th><th>Peak risk</th><th>Scam type</th><th>Red flags</th><th>Verdict</th><th></th></tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="foot">PhishGuard · History is stored locally in your browser and is never uploaded.</footer>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    const KEY = "phishguard.history.v1";
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const DAY = 864e5;
+    const COLORS = { safe: "#22c55e", suspicious: "#f59e0b", critical: "#ef4444", accent: "#6d8dff", accent2: "#38d6ff", muted: "#8b97ad" };
+    const TYPE_COLORS = ["#6d8dff", "#38d6ff", "#f59e0b", "#ef4444", "#22c55e"];
+    let charts = {};
+
+    /* ---------- Navigation ---------- */
+    $("navToggle").addEventListener("click", () => {
+      const open = $("navLinks").classList.toggle("open");
+      $("navToggle").setAttribute("aria-expanded", String(open));
+    });
+
+    /* ---------- Storage ---------- */
+    function loadAll() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(KEY) || "[]");
+        return raw.filter((r) => r && typeof r.startedAt === "number").sort((a, b) => a.startedAt - b.startedAt);
+      } catch (_) { return []; }
+    }
+    function saveAll(list) {
+      try { localStorage.setItem(KEY, JSON.stringify(list)); return true; }
+      catch (_) { toast("Browser storage is unavailable.", true); return false; }
+    }
+
+    /* ---------- Formatting ---------- */
+    const stateFor = (p) => (p > 75 ? "critical" : p >= 35 ? "suspicious" : "safe");
+    const fmtDate = (t) => new Date(t).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+    const fmtDay = (t) => new Date(t).toLocaleDateString(undefined, { day: "2-digit", month: "short" });
+    const dayKey = (t) => { const d = new Date(t); return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); };
+    function fmtDur(ms) { const s = Math.round((ms || 0) / 1000); const m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; }
+    function fmtTotal(ms) { const m = Math.round((ms || 0) / 60000); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; }
+
+    /* ---------- Filtering ---------- */
+    function filtered(all) {
+      const days = Number($("range").value);
+      const v = $("verdict").value;
+      const cutoff = days ? Date.now() - days * DAY : 0;
+      return all.filter((r) => r.startedAt >= cutoff && (v === "all" || r.state === v));
+    }
+
+    /* ---------- Render ---------- */
+    function render() {
+      const all = loadAll();
+      $("emptyState").hidden = all.length > 0;
+      $("dashboard").hidden = all.length === 0;
+      if (!all.length) return;
+
+      const rows = filtered(all);
+      const crit = rows.filter((r) => r.state === "critical").length;
+      const avg = rows.length ? Math.round(rows.reduce((a, r) => a + r.peak, 0) / rows.length) : 0;
+      const total = rows.reduce((a, r) => a + (r.durationMs || 0), 0);
+
+      $("kCalls").textContent = rows.length;
+      $("kCrit").textContent = crit;
+      $("kCritRate").textContent = rows.length ? Math.round((crit / rows.length) * 100) + "% of calls" : "No calls in range";
+      $("kAvg").textContent = avg;
+      $("kTime").textContent = fmtTotal(total);
+
+      drawTrend(rows);
+      drawTypes(rows);
+      drawDaily(rows);
+      drawTable(rows);
+    }
+
+    function chartOpts(extra) {
+      return Object.assign({
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 900, easing: "easeOutQuart" },
+        plugins: { legend: { labels: { color: "#8b97ad", boxWidth: 10, usePointStyle: true } },
+                   tooltip: { backgroundColor: "rgba(15,22,38,.95)", borderColor: "rgba(148,163,184,.25)", borderWidth: 1, padding: 10 } },
+      }, extra || {});
+    }
+    function destroy(name) { if (charts[name]) { charts[name].destroy(); delete charts[name]; } }
+    function ready() { return typeof Chart !== "undefined"; }
+
+    function drawTrend(rows) {
+      destroy("trend");
+      if (!ready()) return;
+      const labels = rows.map((r) => fmtDay(r.startedAt));
+      charts.trend = new Chart($("chartTrend"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Peak risk",
+              data: rows.map((r) => r.peak),
+              borderColor: COLORS.accent, borderWidth: 2.5, tension: .35, fill: true,
+              backgroundColor: (ctx) => {
+                const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 260);
+                g.addColorStop(0, "rgba(109,141,255,.35)"); g.addColorStop(1, "rgba(109,141,255,0)");
+                return g;
+              },
+              pointRadius: 5, pointHoverRadius: 7,
+              pointBackgroundColor: rows.map((r) => COLORS[r.state]),
+              pointBorderColor: "#070b14", pointBorderWidth: 2,
+            },
+            { label: "Critical threshold (75)", data: rows.map(() => 75), borderColor: "rgba(239,68,68,.7)", borderDash: [6, 6], borderWidth: 1.5, pointRadius: 0, fill: false },
+          ],
+        },
+        options: chartOpts({
+          scales: {
+            x: { grid: { color: "rgba(148,163,184,.08)" }, ticks: { color: "#8b97ad", maxRotation: 0, autoSkip: true } },
+            y: { min: 0, max: 100, grid: { color: "rgba(148,163,184,.08)" }, ticks: { color: "#8b97ad", stepSize: 25 } },
+          },
+        }),
+      });
+    }
+
+    function drawTypes(rows) {
+      destroy("types");
+      if (!ready()) return;
+      const counts = {};
+      rows.forEach((r) => { const k = r.scamType && r.scamType !== "None" ? r.scamType : "No scam"; counts[k] = (counts[k] || 0) + 1; });
+      const labels = Object.keys(counts);
+      charts.types = new Chart($("chartTypes"), {
+        type: "doughnut",
+        data: { labels, datasets: [{ data: labels.map((l) => counts[l]), backgroundColor: labels.map((l, i) => l === "No scam" ? COLORS.safe : TYPE_COLORS[i % TYPE_COLORS.length]), borderColor: "#0b1120", borderWidth: 3, hoverOffset: 8 }] },
+        options: chartOpts({ cutout: "68%", plugins: { legend: { position: "bottom", labels: { color: "#8b97ad", boxWidth: 10, usePointStyle: true, padding: 14 } } } }),
+      });
+    }
+
+    function drawDaily(rows) {
+      destroy("daily");
+      if (!ready()) return;
+      const buckets = new Map();
+      rows.forEach((r) => {
+        const k = dayKey(r.startedAt);
+        if (!buckets.has(k)) buckets.set(k, { label: fmtDay(r.startedAt), safe: 0, suspicious: 0, critical: 0 });
+        buckets.get(k)[r.state]++;
+      });
+      const days = [...buckets.values()];
+      const mk = (state, label, color) => ({ label, data: days.map((d) => d[state]), backgroundColor: color, borderRadius: 6, borderSkipped: false, maxBarThickness: 36 });
+      charts.daily = new Chart($("chartDaily"), {
+        type: "bar",
+        data: { labels: days.map((d) => d.label), datasets: [mk("safe", "Safe", COLORS.safe), mk("suspicious", "Suspicious", COLORS.suspicious), mk("critical", "Critical", COLORS.critical)] },
+        options: chartOpts({
+          scales: {
+            x: { stacked: true, grid: { display: false }, ticks: { color: "#8b97ad" } },
+            y: { stacked: true, beginAtZero: true, ticks: { color: "#8b97ad", precision: 0 }, grid: { color: "rgba(148,163,184,.08)" } },
+          },
+        }),
+      });
+    }
+
+    function drawTable(rows) {
+      const list = rows.slice().sort((a, b) => b.startedAt - a.startedAt).slice(0, 50);
+      $("tableCount").textContent = `Showing ${list.length} of ${rows.length}`;
+      $("tbody").innerHTML = list.length ? list.map((r) => `
+        <tr>
+          <td class="mono" style="white-space:nowrap">${esc(fmtDate(r.startedAt))}</td>
+          <td class="mono">${esc(fmtDur(r.durationMs))}</td>
+          <td class="mono">${Math.round(r.peak)}/100</td>
+          <td>${esc(r.scamType && r.scamType !== "None" ? r.scamType : "None detected")}</td>
+          <td class="mono">${Number(r.flags) || 0}</td>
+          <td><span class="verdict ${esc(r.state)}">${esc(r.state.toUpperCase())}</span></td>
+          <td><button class="del" data-id="${esc(r.id)}" aria-label="Delete this call">Delete</button></td>
+        </tr>`).join("")
+        : `<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">No calls match these filters.</td></tr>`;
+    }
+
+    /* ---------- Actions ---------- */
+    $("tbody").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-id]");
+      if (!btn) return;
+      saveAll(loadAll().filter((r) => r.id !== btn.dataset.id));
+      render();
+      toast("Call removed from history.");
+    });
+
+    $("range").addEventListener("change", render);
+    $("verdict").addEventListener("change", render);
+
+    $("btnExport").addEventListener("click", () => {
+      const rows = filtered(loadAll());
+      if (!rows.length) { toast("Nothing to export for these filters.", true); return; }
+      const head = ["Date", "Duration (s)", "Peak risk", "Scam type", "Red flags", "Verdict", "Mode"];
+      const csv = [head, ...rows.map((r) => [
+        new Date(r.startedAt).toISOString(), Math.round((r.durationMs || 0) / 1000), r.peak,
+        r.scamType, r.flags, r.state, r.mode || "Live",
+      ])].map((line) => line.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      a.download = `phishguard-history-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+      toast(`Exported ${rows.length} calls.`);
+    });
+
+    $("btnClear").addEventListener("click", () => {
+      if (!loadAll().length) { toast("History is already empty."); return; }
+      if (!confirm("Delete all saved call history? This cannot be undone.")) return;
+      saveAll([]);
+      render();
+      toast("History cleared.");
+    });
+
+    /* ---------- Toast ---------- */
+    function toast(msg, isError) {
+      const el = document.createElement("div");
+      el.className = "toast";
+      el.style.borderColor = isError ? "rgba(239,68,68,.5)" : "";
+      el.textContent = msg;
+      $("toasts").appendChild(el);
+      setTimeout(() => el.remove(), 3200);
+    }
+
+    /* ---------- Init ---------- */
+    if (typeof Chart !== "undefined") { Chart.defaults.color = "#8b97ad"; Chart.defaults.borderColor = "rgba(148,163,184,.12)"; Chart.defaults.font.family = "Inter, system-ui, sans-serif"; }
+    window.addEventListener("load", () => {
+      if (typeof Chart !== "undefined") { Chart.defaults.color = "#8b97ad"; Chart.defaults.borderColor = "rgba(148,163,184,.12)"; }
+      render();
+    });
+    render();
+  })();
+  </script>
+</body>
+</html>
